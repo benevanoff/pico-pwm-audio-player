@@ -60,7 +60,7 @@ void audio_flash_store_directory(const audio_flash_directory_t *directory) {
     uint32_t interrupts = save_and_disable_interrupts();
     flash_range_erase(AUDIO_FLASH_OFFSET, AUDIO_FLASH_DIRECTORY_SIZE);
     for (uint32_t offset = 0; offset < sizeof(*directory); offset += FLASH_PAGE_SIZE) {
-        memset(page, 0xff, sizeof(page));
+        memset(page, 0x00, sizeof(page));
         memcpy(page, (const uint8_t *)directory + offset, FLASH_PAGE_SIZE);
         flash_range_program(AUDIO_FLASH_OFFSET + offset, page, FLASH_PAGE_SIZE);
     }
