@@ -3,7 +3,8 @@ import argparse
 import struct
 import sys
 import time
-import wave
+
+from audio_reader import read_audio
 
 
 HEADER = struct.Struct("<4sIII")
@@ -19,26 +20,6 @@ def checksum(data):
     return value
 
 
-def read_wav(path):
-    with wave.open(path, "rb") as wav_file:
-        if wav_file.getnchannels() != 1:
-            raise ValueError("Only mono WAV files are supported")
-        if wav_file.getsampwidth() not in (1, 2):
-            raise ValueError("Only 8-bit and 16-bit PCM WAV files are supported")
-
-        sample_rate = wav_file.getframerate()
-        sample_width = wav_file.getsampwidth()
-        raw = wav_file.readframes(wav_file.getnframes())
-
-    if sample_width == 1:
-        return sample_rate, raw
-
-    samples = bytearray()
-    for (sample,) in struct.iter_unpack("<h", raw):
-        samples.append(max(0, min(255, int(sample / 32768.0 * 127.0) + 128)))
-    return sample_rate, bytes(samples)
-
-
 def wait_for_ready(serial_port):
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
@@ -51,10 +32,15 @@ def wait_for_ready(serial_port):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Upload a mono WAV clip to Pico flash")
+    parser = argparse.ArgumentParser(
+        description="Upload a mono WAV or MP3 clip to Pico flash"
+    )
     parser.add_argument("port", help="USB serial device, for example /dev/ttyACM0")
     parser.add_argument("file_id", type=int, choices=range(1, 256), help="audio file ID: 1 to 255")
-    parser.add_argument("wav_file")
+    parser.add_argument(
+        "audio_file",
+        help="path to a mono WAV (.wav) or MP3 (.mp3) file",
+    )
     args = parser.parse_args()
 
     try:
@@ -62,9 +48,12 @@ def main():
     except ImportError:
         raise SystemExit("This tool requires pyserial. Install it with: python3 -m pip install pyserial")
 
-    sample_rate, samples = read_wav(args.wav_file)
+    sample_rate, samples = read_audio(args.audio_file)
     if not samples or len(samples) > MAX_SAMPLES:
-        raise ValueError(f"Audio must contain 1 to {MAX_SAMPLES} samples")
+        raise ValueError(
+            f"Audio must contain 1 to {MAX_SAMPLES} samples "
+            f"(decoded {len(samples)} samples)"
+        )
 
     with serial.Serial(args.port, 115200, timeout=0.25, write_timeout=10) as serial_port:
         wait_for_ready(serial_port)

@@ -4,10 +4,11 @@
 import sys
 import struct
 import time
-import wave
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
+
+from audio_reader import read_audio
 
 try:
     import serial
@@ -89,29 +90,6 @@ def checksum(data: bytes) -> int:
     return value
 
 
-def read_wav(path: str) -> tuple[int, bytes]:
-    with wave.open(path, "rb") as wav_file:
-        if wav_file.getnchannels() != 1:
-            raise ValueError(f"{Path(path).name}: only mono WAV files are supported")
-        if wav_file.getsampwidth() not in (1, 2):
-            raise ValueError(f"{Path(path).name}: only 8-bit and 16-bit PCM WAV files are supported")
-        sample_rate = wav_file.getframerate()
-        sample_width = wav_file.getsampwidth()
-        raw = wav_file.readframes(wav_file.getnframes())
-
-    if sample_width == 1:
-        samples = raw
-    else:
-        converted = bytearray()
-        for (sample,) in struct.iter_unpack("<h", raw):
-            converted.append(max(0, min(255, int(sample / 32768.0 * 127.0) + 128)))
-        samples = bytes(converted)
-
-    if not samples or len(samples) > MAX_SAMPLES:
-        raise ValueError(f"{Path(path).name}: audio must contain 1 to {MAX_SAMPLES} samples")
-    return sample_rate, samples
-
-
 class PicoProtocol:
     def __init__(self, port: str, baud_rate: int, log):
         self.port = port
@@ -180,7 +158,7 @@ class PicoProtocol:
         raise TimeoutError("Timed out waiting for flash statistics")
 
     def upload(self, file_id: int, path: str, progress=None) -> None:
-        sample_rate, samples = read_wav(path)
+        sample_rate, samples = read_audio(path)
         if progress is not None:
             progress(0, len(samples))
         with self._open() as serial_port:
@@ -295,8 +273,8 @@ class AudioManager(QMainWindow):
         self.index_spin.setValue(1)
         self.index_spin.setToolTip("The first 1-based Pico audio slot to write")
         upload_layout.addRow("Start slot", self.index_spin)
-        self.files_label = QLabel("No WAV files selected")
-        choose_button = QPushButton("Choose WAV files...")
+        self.files_label = QLabel("No audio files selected")
+        choose_button = QPushButton("Choose audio files...")
         choose_button.clicked.connect(self.choose_files)
         files_row = QHBoxLayout()
         files_row.addWidget(self.files_label, 1)
@@ -337,7 +315,9 @@ class AudioManager(QMainWindow):
             self.port_combo.addItem("No serial devices found", "")
 
     def choose_files(self) -> None:
-        files, _ = QFileDialog.getOpenFileNames(self, "Choose mono WAV files", "", "WAV files (*.wav)")
+        files, _ = QFileDialog.getOpenFileNames(
+            self, "Choose mono WAV or MP3 files", "", "Audio files (*.wav *.mp3)"
+        )
         if files:
             self.selected_files = files
             self.files_label.setText(f"{len(files)} file(s) selected")
@@ -404,7 +384,7 @@ class AudioManager(QMainWindow):
 
     def upload_files(self) -> None:
         if not self.selected_files:
-            QMessageBox.warning(self, "No WAV files", "Choose one or more WAV files to upload.")
+            QMessageBox.warning(self, "No audio files", "Choose one or more WAV or MP3 files to upload.")
             return
         start = self.index_spin.value()
         if start + len(self.selected_files) - 1 > 255:

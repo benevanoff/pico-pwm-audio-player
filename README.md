@@ -29,11 +29,12 @@ are available through `make` and do not depend on the checkout location:
 make PICO_SDK_PATH=/path/to/pico-sdk
 ```
 
-The Pico accepts mono 8-bit or 16-bit PCM WAV files over its USB CDC serial
-connection. Uploaded audio is converted to unsigned 8-bit PCM and packed into
-a shared 1 MiB flash area. The directory supports up to 255 file IDs; the
-current demo plays file IDs 1 and 2 from GPIO 0 and GPIO 15 respectively.
-Wire each button between its GPIO pin and ground.
+The Pico accepts mono WAV (.wav) and MP3 (.mp3) audio files over its USB CDC
+serial connection. Uploaded audio is converted to unsigned 8-bit PCM on the
+host computer (using Python's `wave` module for WAV and the `miniaudio` library
+for MP3) and packed into a shared 1 MiB flash area. The directory supports up
+to 255 file IDs; the current demo plays file IDs 1 and 2 from GPIO 0 and GPIO
+15 respectively. Wire each button between its GPIO pin and ground.
 
 ## 1602 LCD display
 
@@ -48,17 +49,18 @@ The I2C setup follows the Raspberry Pi Pico SDK `hardware_i2c` API:
 GP4 and GP5 are the I2C0 SDA/SCL GPIO functions listed in the
 [RP2040 datasheet GPIO function table](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf).
 
-Install the desktop dependency once:
+Install the desktop dependencies once:
 
 ```sh
-python3 -m pip install pyserial PySide6
+python3 -m pip install pyserial PySide6 miniaudio
 ```
 
 The Qt audio manager provides a device picker, an advanced baud-rate option,
-the current flash listing and storage usage, and indexed uploads. Select multiple WAV files to
-write them into consecutive 1-based Pico slots starting at the chosen slot;
-writing an occupied slot replaces that slot's directory entry and consumes
-additional flash space just like the command-line uploader.
+the current flash listing and storage usage, and indexed uploads. Select
+multiple WAV or MP3 files to write them into consecutive 1-based Pico slots
+starting at the chosen slot; writing an occupied slot replaces that slot's
+directory entry and consumes additional flash space just like the
+command-line uploader.
 
 Launch it with:
 
@@ -80,6 +82,7 @@ Build and flash the firmware, then upload a clip:
 ```sh
 python3 scripts/upload_audio.py /dev/ttyACM0 1 audio/clip-one.wav
 python3 scripts/upload_audio.py /dev/ttyACM0 42 audio/clip-two.wav
+python3 scripts/upload_audio.py /dev/ttyACM0 3 music/song.mp3
 python3 scripts/list_audio.py /dev/ttyACM0
 ```
 
@@ -89,3 +92,8 @@ payload, so repeated replacements reserve additional space. Once the shared
 area is full, erase it by reflashing before uploading more clips.
 The listing command reports the number of valid audio clips and the sample
 payload size used by each clip.
+
+Both WAV and MP3 files are decoded on the host computer to unsigned 8-bit
+mono PCM at the file's native sample rate before being uploaded.  Stereo
+MP3 files are automatically downmixed to mono.  The `miniaudio` library
+handles MP3 decoding; WAV files use Python's built-in `wave` module.
